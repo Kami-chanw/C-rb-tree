@@ -1,4 +1,4 @@
-#include "rb_tree.h"
+#include "../include/rb_tree.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
