@@ -39,7 +39,9 @@ typedef struct {
 } rbt_eqrange_result_t;
 
 typedef void (*rbt_val_dtor)(void*);
-typedef int (*rbt_val_comp)(void*, void*);  // <0 means less, ==0 means equal, >0 means greater
+typedef int (*rbt_val_comp)(void*, void*);    // < 0 means less, == 0 means equal, > 0 means greater
+typedef void (*rbt_tree_print)(const char*);  // print tree structure
+typedef void (*rbt_val_print)(void*);         // print value
 
 rbt_tree* rbt_create(rbt_val_comp cmpr);
 void      rbt_destroy(rbt_tree*, rbt_val_dtor dtor);
@@ -70,6 +72,8 @@ rbt_iterator rbt_rbegin(rbt_tree* tree);
 rbt_iterator rbt_rend(rbt_tree* tree);
 
 bool rbt_is_empty(rbt_tree* tree);
+
+void rbt_display(rbt_tree* tree, rbt_tree_print, rbt_val_print);
 
 rbt_iterator rbt_iter_next(rbt_iterator it);
 rbt_iterator rbt_iter_prev(rbt_iterator it);

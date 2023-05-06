@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define RED 0
 #define BLACK 1
@@ -14,6 +15,8 @@
 #define IS_LEFT(node) ((node) == (node)->parent->left)
 #define IS_RIGHT(node) ((node) == (node)->parent->right)
 #define IS_ACTUAL_ROOT(node) ((node) == (node)->parent->parent)
+
+#define MAX_DEPTH 128 // for display
 
 typedef struct node_t {
     void*          value;
@@ -52,7 +55,6 @@ static node_t* rightmost(node_t* node);
 static node_t* inorder_predecessor(node_t* node);
 static node_t* inorder_successor(node_t* node);
 static void    set_color(node_t* node, int color);
-static void    set_nil(node_t* node, bool is_nil);
 
 // iterator operation
 static node_t*      incr(node_t* node);
@@ -66,8 +68,10 @@ static find_result_t  upper_bound(rbt_tree* tree, void*);
 static nodeptr_pair_t equal_range(rbt_tree* tree, void*);
 static node_t*        create_node(rbt_tree* tree, void*);
 static node_t*        insert_at(rbt_tree* tree, ins_pack_t pack, node_t* new_node);
-static void           take_node(rbt_tree* tree, node_t* node, node_t* suc);
+static void           take_node(node_t* node, node_t* suc);
 static node_t*        extract_node(rbt_tree* tree, node_t* node);  // extract node without free mem
+static void           display(rbt_tree* tree, bool* visited, node_t* node, size_t size, bool position, rbt_tree_print tprint,
+                              rbt_val_print vprint);
 
 // rb tree implementation
 static void    insert_fixup(rbt_tree* tree, node_t* new_node);
@@ -148,10 +152,9 @@ rbt_insert_or_assign_result_t rbt_insert_or_assign(rbt_tree* tree, void* value) 
 }
 
 void* rbt_extract(rbt_tree* tree, rbt_iterator position) {
-    node_t *curr = position.node;
-    void* value = curr->value;  // the value dummy root is also NULL
+    node_t* curr  = position.node;
+    void*   value = curr->value;  // the value dummy root is also NULL
     if (!IS_NIL(curr)) {
-        node_t *suc = inorder_successor(curr);
         erase_fixup(tree, extract_node(tree, curr));
         free(curr);
         --tree->size;
@@ -173,10 +176,10 @@ size_t rbt_erase(rbt_tree* tree, void* value, rbt_val_dtor dtor) {
 }
 
 rbt_iterator rbt_erase_at(rbt_tree* tree, rbt_iterator position, rbt_val_dtor dtor) {
-     node_t *curr = position.node;
+    node_t* curr = position.node;
     if (IS_NIL(curr))
         return rbt_end(tree);
-    node_t *suc = inorder_successor(curr);
+    node_t* suc = inorder_successor(curr);
     dtor(curr->value);
     erase_fixup(tree, extract_node(tree, curr));
     free(curr);
@@ -221,6 +224,12 @@ void* rbt_val_at_or(rbt_tree* tree, void* value, void* default_val) {
 }
 
 size_t rbt_size(rbt_tree* tree) { return tree->size; }
+
+void rbt_display(rbt_tree* tree, rbt_tree_print tprint, rbt_val_print vprint) {
+    bool visited[MAX_DEPTH];
+    memset(visited, 0, sizeof(visited));
+    display(tree, visited, tree->root.parent, 0, 0, tprint, vprint);
+}
 
 rbt_iterator rbt_lower_bound(rbt_tree* tree, void* key) { return make_iter(lower_bound(tree, key).curr); }
 
@@ -293,12 +302,6 @@ static void set_color(node_t* node, int color) {
         node->color &= ~1;
     else
         node->color |= BLACK;
-}
-static void set_nil(node_t* node, bool is_nil) {
-    if (is_nil)
-        node->color |= 2;
-    else
-        node->color &= ~2;
 }
 
 static node_t* incr(node_t* node) { return inorder_successor(node); }
@@ -399,7 +402,7 @@ static node_t* create_node(rbt_tree* tree, void* value) {
     return new_node;
 }
 
-static void take_node(rbt_tree* tree, node_t* node, node_t* suc) {
+static void take_node(node_t* node, node_t* suc) {
     if (IS_LEFT(node))
         node->parent->left = suc;
     else if (IS_RIGHT(node))
@@ -422,11 +425,11 @@ static node_t* extract_node(rbt_tree* tree, node_t* node) {
     int     color = COLOR_OF(node);
     if (IS_NIL(node->left)) {
         fixnode = node->right;
-        take_node(tree, node, node->right);
+        take_node(node, node->right);
     }
     else if (IS_NIL(node->right)) {
         fixnode = node->left;
-        take_node(tree, node, node->left);
+        take_node(node, node->left);
     }
     else {
         suc     = leftmost(node->right);
@@ -435,16 +438,42 @@ static node_t* extract_node(rbt_tree* tree, node_t* node) {
         if (suc->parent == node)
             fixnode->parent = suc;
         else {
-            take_node(tree, suc, suc->right);
+            take_node(suc, suc->right);
             suc->right         = node->right;
             suc->right->parent = suc;
         }
-        take_node(tree, node, suc);
+        take_node(node, suc);
         suc->left         = node->left;
         suc->left->parent = suc;
         set_color(suc, COLOR_OF(node));
     }
     return color == BLACK ? fixnode : tree->root.parent;
+}
+
+static void display(rbt_tree* tree, bool* visited, node_t* node, size_t size, bool position, rbt_tree_print tprint,
+                    rbt_val_print vprint) {
+    if (size > MAX_DEPTH)
+        return;
+    for (size_t i = 1; i < size; i++)
+        tprint(visited[i] ? "  │" : "   ");
+    if (IS_NIL(node))
+        tprint(position ? "  ├─ \n" : "  └─ \n");
+    else {
+        if (node->parent == &tree->root)
+            tprint("└─ ");
+        else if (IS_LEFT(node))
+            tprint("  └─ ");
+        else
+            tprint("  ├─ ");
+        vprint(node->value);
+        tprint("\n");
+        if (!IS_NIL(node->left) || !IS_NIL(node->right)) {
+            visited[size + 1] = true;
+            display(tree, visited, node->right, size + 1, 1, tprint, vprint);
+            visited[size + 1] = false;
+            display(tree, visited, node->left, size + 1, 0, tprint, vprint);
+        }
+    }
 }
 
 // rb tree implementation
